@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>WOBAO 足球竞猜</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{
+  --bg:var(--tg-theme-bg-color,#0f1115);
+  --card:var(--tg-theme-secondary-bg-color,#1a1d24);
+  --text:var(--tg-theme-text-color,#ffffff);
+  --hint:var(--tg-theme-hint-color,#8a8f98);
+  --accent:var(--tg-theme-button-color,#22c55e);
+  --accent-text:var(--tg-theme-button-text-color,#ffffff);
+  --gold:#f5b301;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;padding:16px;padding-bottom:40px}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.brand{font-size:18px;font-weight:700}
+.sponsor{font-size:12px;color:var(--hint);margin-top:2px}
+.pts{text-align:right}
+.pts small{font-size:12px;color:var(--hint);display:block}
+.pts b{font-size:22px}
+.prize{background:rgba(245,179,1,.15);color:var(--gold);border-radius:12px;padding:10px 12px;font-size:13px;margin-bottom:14px}
+.tabs{display:flex;gap:8px;margin-bottom:14px}
+.tabs button{flex:1;padding:10px;border-radius:10px;border:none;background:var(--card);color:var(--hint);font-size:14px;font-weight:600}
+.tabs button.on{background:var(--accent);color:var(--accent-text)}
+.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px}
+.mh{display:flex;justify-content:space-between;font-size:15px;font-weight:600}
+.mh span{font-size:12px;color:var(--hint);font-weight:400}
+.opts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.opts button{padding:11px 4px;border-radius:10px;border:1.5px solid transparent;background:rgba(127,127,127,.15);color:var(--text);font-size:14px}
+.opts button.sel{border-color:var(--accent);background:rgba(34,197,94,.18)}
+.opts button:disabled{opacity:.5}
+.res{margin-top:10px;font-size:13px}
+.win{color:#22c55e}.lose{color:var(--hint)}
+.row{display:flex;justify-content:space-between;padding:10px 0;border-top:1px solid rgba(127,127,127,.2);font-size:14px}
+.row:first-child{border-top:none}
+.me{color:var(--accent);font-weight:700}
+.btn{width:100%;padding:14px;border-radius:12px;border:none;background:var(--accent);color:var(--accent-text);font-size:16px;font-weight:700;margin-top:4px}
+.ghost{background:var(--card);color:var(--text)}
+.hint{font-size:12px;color:var(--hint);text-align:center;margin-top:10px}
+.hide{display:none}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div>
+    <div class="brand">⚽ WOBAO 足球竞猜</div>
+    <div class="sponsor" id="sponsor">由 赞助品牌 独家赞助</div>
+  </div>
+  <div class="pts"><small>我的积分</small><b id="pts">1000</b></div>
+</div>
+
+<div class="prize" id="prize">🏆 本周第一名：签名球衣 + 球员见面会</div>
+
+<div class="tabs">
+  <button id="t1" class="on">竞猜</button>
+  <button id="t2">排行榜</button>
+</div>
+
+<div id="pagePredict">
+  <div id="matches"></div>
+  <div class="card" style="display:flex;justify-content:space-between;align-items:center">
+    <div>
+      <div style="font-weight:600">⭐ 双倍积分卡</div>
+      <div style="font-size:12px;color:var(--hint)" id="dblText">猜中积分 x2</div>
+    </div>
+    <button class="btn ghost" style="width:auto;padding:10px 16px;margin:0" id="dblBtn">使用</button>
+  </div>
+  <button class="btn" id="invite">邀请好友 +100 积分</button>
+  <div class="hint">每猜中一场 +300 积分 · 免费参与，不涉及真钱</div>
+</div>
+
+<div id="pageBoard" class="hide">
+  <div class="card" id="board"></div>
+  <div class="hint">每周一 00:00 结算，第一名获得本周大奖</div>
+</div>
+
+<script>
+/* ===== 在这里改比赛和赛果 ===== */
+const CONFIG = {
+  sponsor: "赞助品牌",
+  prize: "🏆 本周第一名：签名球衣 + 球员见面会",
+  botUsername: "YourBotName",
+  matches: [
+    { id: "m1", home: "马来西亚", away: "泰国",   time: "周六 20:00" },
+    { id: "m2", home: "越南",     away: "新加坡", time: "周六 22:00" },
+    { id: "m3", home: "印尼",     away: "菲律宾", time: "周日 20:00" }
+  ],
+  /* 比赛结束后填结果：0=主胜 1=平局 2=客胜 */
+  results: { }
+};
+/* ============================== */
+
+const tg = window.Telegram ? window.Telegram.WebApp : null;
+if (tg) { tg.ready(); tg.expand(); }
+const user = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) || { first_name: "你" };
+const LABEL = ["主胜", "平局", "客胜"];
+const KEY = "wobao_predict_v1";
+
+let state;
+try { state = JSON.parse(localStorage.getItem(KEY)) || null; } catch (e) { state = null; }
+if (!state) state = { picks: {}, dbl: null, settled: {}, bonus: 0, invited: false };
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+function haptic(t){ try { tg && tg.HapticFeedback.impactOccurred(t || "light"); } catch (e) {} }
+
+function points(){
+  let p = 1000 + state.bonus;
+  for (const m of CONFIG.matches) {
+    const r = CONFIG.results[m.id];
+    if (r === undefined || state.picks[m.id] === undefined) continue;
+    if (state.picks[m.id] === r) p += state.dbl === m.id ? 600 : 300;
+  }
+  return p;
+}
+
+function renderMatches(){
+  const box = document.getElementById("matches");
+  box.innerHTML = "";
+  for (const m of CONFIG.matches) {
+    const done = CONFIG.results[m.id] !== undefined;
+    const pick = state.picks[m.id];
+    const card = document.createElement("div");
+    card.className = "card";
+    let html = `<div class="mh">${m.home} vs ${m.away}<span>${done ? "已结束" : m.time}</span></div><div class="opts">`;
+    LABEL.forEach((t, i) => {
+      html += `<button data-m="${m.id}" data-o="${i}" class="${pick === i ? "sel" : ""}" ${done ? "disabled" : ""}>${t}</button>`;
+    });
+    html += "</div>";
+    if (done) {
+      const r = CONFIG.results[m.id];
+      const ok = pick === r;
+      const gain = ok ? (state.dbl === m.id ? 600 : 300) : 0;
+      html += `<div class="res ${ok ? "win" : "lose"}">赛果：${LABEL[r]} · ${pick === undefined ? "未参与" : ok ? "猜中 +" + gain : "未猜中"}</div>`;
+    } else if (state.dbl === m.id) {
+      html += `<div class="res win">已使用双倍卡</div>`;
+    }
+    card.innerHTML = html;
+    box.appendChild(card);
+  }
+  box.querySelectorAll("button[data-m]").forEach(b => {
+    b.onclick = () => {
+      state.picks[b.dataset.m] = Number(b.dataset.o);
+      save(); haptic(); renderAll();
+    };
+  });
+}
+
+function renderBoard(){
+  const me = points();
+  const list = [["Ahmad", 1820], ["小龙", 1650], ["Siti", 1400], ["Jason", 1210], [user.first_name, me, true]]
+    .sort((a, b) => b[1] - a[1]);
+  document.getElementById("board").innerHTML = list.map((r, i) =>
+    `<div class="row"><span class="${r[2] ? "me" : ""}">${i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : (i + 1) + "."} ${r[0]}</span><span class="${r[2] ? "me" : ""}">${r[1].toLocaleString()}</span></div>`
+  ).join("");
+}
+
+function renderAll(){
+  document.getElementById("pts").textContent = points().toLocaleString();
+  document.getElementById("sponsor").textContent = "由 " + CONFIG.sponsor + " 独家赞助";
+  document.getElementById("prize").textContent = CONFIG.prize;
+  document.getElementById("dblText").textContent = state.dbl ? "已用于 " + matchName(state.dbl) : "猜中积分 x2（每周 1 张）";
+  document.getElementById("dblBtn").textContent = state.dbl ? "已使用" : "使用";
+  renderMatches(); renderBoard();
+}
+function matchName(id){ const m = CONFIG.matches.find(x => x.id === id); return m ? m.home + " vs " + m.away : ""; }
+
+document.getElementById("dblBtn").onclick = () => {
+  if (state.dbl) return;
+  const open = CONFIG.matches.filter(m => CONFIG.results[m.id] === undefined && state.picks[m.id] !== undefined);
+  if (!open.length) { alert("先竞猜一场还没开始的比赛，再使用双倍卡"); return; }
+  state.dbl = open[0].id; save(); haptic("medium"); renderAll();
+};
+
+document.getElementById("invite").onclick = () => {
+  const link = "https://t.me/" + CONFIG.botUsername + "?start=ref_" + (user.id || "0");
+  const text = "一起来猜球赢大奖！⚽";
+  const url = "https://t.me/share/url?url=" + encodeURIComponent(link) + "&text=" + encodeURIComponent(text);
+  if (tg) tg.openTelegramLink(url); else window.open(url);
+  if (!state.invited) { state.invited = true; state.bonus += 100; save(); renderAll(); }
+};
+
+const t1 = document.getElementById("t1"), t2 = document.getElementById("t2");
+t1.onclick = () => { t1.className = "on"; t2.className = ""; pagePredict.classList.remove("hide"); pageBoard.classList.add("hide"); };
+t2.onclick = () => { t2.className = "on"; t1.className = ""; pageBoard.classList.remove("hide"); pagePredict.classList.add("hide"); };
+
+renderAll();
+</script>
+</body>
+</html>
